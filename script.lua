@@ -38,7 +38,7 @@ getgenv().Aimbot = {
     Enabled = false,
     TeamCheck = false,
     AimPart = "Head",
-    MaxDistance = 400,
+    MaxDistance = 1000, -- studs
     ShowFOV = true,
     FOV = 80,
     FOVColor = Color3.fromRGB(255, 0, 0)
@@ -360,6 +360,7 @@ end
 -- =========================
 
 local AimbotConn
+local AimTraceLine
 
 local function aimbotPassesTeam(player)
     if not getgenv().Aimbot.TeamCheck then
@@ -377,7 +378,7 @@ end
 
 local function getClosestPlayerToCursor(targetPartName, maxDistance)
     local nearestPart = nil
-    local last = math.huge
+    local nearestDist = math.huge
     local cursorPos = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
     local maxDist = maxDistance or 400
 
@@ -390,9 +391,10 @@ local function getClosestPlayerToCursor(targetPartName, maxDistance)
                 if aimPart then
                     local screenPos, visible = Camera:WorldToViewportPoint(aimPart.Position)
                     if visible then
-                        local dist = (Vector2.new(screenPos.X, screenPos.Y) - cursorPos).Magnitude
-                        if dist < last and dist <= maxDist then
-                            last = dist
+                        local screenDist = (Vector2.new(screenPos.X, screenPos.Y) - cursorPos).Magnitude
+                        local worldDist = (aimPart.Position - Camera.CFrame.Position).Magnitude
+                        if worldDist <= maxDist and screenDist < nearestDist then
+                            nearestDist = screenDist
                             nearestPart = aimPart
                         end
                     end
@@ -420,6 +422,43 @@ local function setAimbot(state)
             AimbotConn:Disconnect()
             AimbotConn = nil
         end
+        if AimTraceLine then
+            AimTraceLine.Visible = false
+        end
+    end
+end
+
+local function ensureAimTraceLine()
+    if not AimTraceLine then
+        AimTraceLine = Drawing.new("Line")
+        AimTraceLine.Color = Color3.fromRGB(0, 255, 0)
+        AimTraceLine.Thickness = 2
+        AimTraceLine.Transparency = 1
+        AimTraceLine.Visible = false
+    end
+    return AimTraceLine
+end
+
+local function showAimTrace(part)
+    local line = ensureAimTraceLine()
+    if not part then
+        line.Visible = false
+        return
+    end
+
+    local targetPos, vis = Camera:WorldToViewportPoint(part.Position)
+    if vis then
+        local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+        line.From = screenCenter
+        line.To = Vector2.new(targetPos.X, targetPos.Y)
+        line.Visible = true
+        task.delay(1, function()
+            if line then
+                line.Visible = false
+            end
+        end)
+    else
+        line.Visible = false
     end
 end
 
@@ -743,8 +782,8 @@ AimbotTab:CreateDropdown({
 })
 
 AimbotTab:CreateSlider({
-    Name = "Max Distance (pixels)",
-    Range = {50, 1000},
+    Name = "Max Distance (studs)",
+    Range = {50, 5000},
     Increment = 10,
     CurrentValue = getgenv().Aimbot.MaxDistance or 400,
     Callback = function(v)
@@ -757,6 +796,23 @@ AimbotTab:CreateToggle({
     CurrentValue = getgenv().Aimbot.TeamCheck,
     Callback = function(v)
         getgenv().Aimbot.TeamCheck = v
+    end
+})
+
+AimbotTab:CreateButton({
+    Name = "Test Aim Trace",
+    Callback = function()
+        if not getgenv().Aimbot.Enabled then
+            log("Aimbot must be ON to test trace.")
+            return
+        end
+        local part = getClosestPlayerToCursor(getgenv().Aimbot.AimPart or "Head", getgenv().Aimbot.MaxDistance or 400)
+        if part then
+            showAimTrace(part)
+            log("Aim trace shown.")
+        else
+            log("No target to trace.")
+        end
     end
 })
 
